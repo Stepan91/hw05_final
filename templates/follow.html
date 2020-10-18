@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %} Посты интересного пользователя {% endblock %}
+
+{% block content %}
+    <div class="container">
+        {% include "menu.html" with follow=True %}
+
+           <h1> Посты интересного пользователя </h1>
+                {% for post in page %}
+                    {% include "post_item.html" with post=post %}
+                {% endfor %}
+    </div>
+
+        {% if page.has_other_pages %}
+            {% include "paginator.html" with items=page paginator=paginator%}
+        {% endif %}
+
+{% endblock %}
