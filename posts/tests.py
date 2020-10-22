@@ -1,10 +1,13 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.test import Client
-from .models import User, Post, Group, Comment
+from .models import User, Post, Group, Comment, Follow
 from .forms import PostForm
 from . import views
 from django.urls import reverse
 from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
+from PIL import Image
+from unittest.mock import Mock
  
  
 class ScriptsTest(TestCase):
@@ -20,6 +23,7 @@ class ScriptsTest(TestCase):
         self.not_login_user = Client()
         self.login_user = Client()
         self.login_user.force_login(self.user)
+        cache.clear()
  
  
     def check(self, url, text, author, group):
@@ -52,8 +56,8 @@ class ScriptsTest(TestCase):
                                 {'text': 'test_text', 'group': self.group.id}, 
                                 follow=True 
                                 )
-        object = Post.objects.get(id=1)
-        all_objects = Post.objects.all().count()
+        object = Post.objects.get(pk=1)
+        all_objects = Post.objects.count()
         self.assertEqual(all_objects, 1)
         self.assertEqual(object.text, 'test_text')
         self.assertEqual(object.author, self.user)
@@ -68,7 +72,7 @@ class ScriptsTest(TestCase):
                             f'{reverse("new_post")}'
                             )
                         )
-        all_objects = Post.objects.all().count()
+        all_objects = Post.objects.count()
         self.assertEqual(all_objects, 0)
  
  
@@ -79,7 +83,7 @@ class ScriptsTest(TestCase):
             reverse("post", kwargs={"username": self.user.username, "post_id": post.id}),
             reverse("profile", kwargs={"username": self.user.username})
         ]
-        cache.clear()
+
         for test in urls:
             self.check(test, post.text, self.user, self.group)
  
@@ -88,7 +92,7 @@ class ScriptsTest(TestCase):
         post = Post.objects.create(text='GOGOGOGOGO', author=self.user, group=self.group)
         group_new = Group.objects.create(title='test_group_after_edit', slug='test_edit')
         urls = [
-            reverse("group_posts", kwargs={"slug": "test_edit"}),
+            reverse("group_posts", kwargs={"slug": group_new.slug}),
             reverse("profile", kwargs={"username": self.user.username}),
             reverse("post", kwargs={"username": self.user.username, "post_id": post.id}),
             reverse("index"),
@@ -109,7 +113,6 @@ class ScriptsTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, new_data['group'], status_code=200)
  
-        cache.clear()
         for test in urls:
             self.check(test, new_data['text'], self.user, group_new.title)
  
@@ -144,15 +147,23 @@ class Imagines(TestCase):
         self.group = Group.objects.create(title='test_group_imagine', slug='test_group')
         self.login_user = Client()
         self.login_user.force_login(self.user)
+        cache.clear()
  
- 
+    #пробовал так - тест рушится, решил cache.clear перенести в сетап.
+    #@override_settings(CACHES={'default': 
+                #{'BACKEND': 'django.core.cache.backends.dummy.DummyCache'}
+            #}
+        #)
     def test_img(self):
-        with open('posts/media/posts/priroda.jpg','rb') as img:
-            post = self.login_user.post(reverse('new_post'), 
+        img = Image.new('RGB', (60, 30), color = (73, 109, 137))
+        img.save('pil_color.jpg')
+        SimpleUploadedFile(name='pil_color.jpg', content=b'file_content', content_type='image/jpg')
+        with open('pil_color.jpg', 'rb') as _img:
+           post = self.login_user.post(reverse('new_post'),
                                 {
                                 'username': self.user.username,
                                 'text': 'new_post_with_img',
-                                'image': img,
+                                'image': _img,
                                 'group': self.group.id
                                 },
                             follow=True
@@ -164,32 +175,32 @@ class Imagines(TestCase):
                                     )
                                 )
         self.assertContains(response, '<img')
-        cache.clear()
-        response = self.login_user.get(reverse("index"))
-        self.assertContains(response, '<img')
- 
-        response = self.login_user.get(reverse("profile", kwargs={
+        
+        urls = [
+            reverse("index"),
+            reverse("profile", kwargs={
                                     "username": self.user.username
                                     }
-                                )
-                            )
-        self.assertContains(response, '<img')
- 
-        response = self.login_user.get(reverse("group_posts", kwargs={
+                                ),
+            reverse("group_posts", kwargs={
                                     "slug": "test_group"
                                     }
                                 )
-                            )
-        self.assertContains(response, '<img')
- 
+            ]
+        for url in urls:
+            response = self.login_user.get(url)
+            self.assertContains(response, '<img')
+  
  
     def test_wrong_format(self):
-        with open('posts/media/posts/er_doc.docx','rb') as img:
-            response = self.login_user.post(reverse('new_post'), 
+        mock_file = Mock()
+        mock_file.name = 'my_filename.doc'
+        mock_file.save()
+        response = self.login_user.post(reverse('new_post'), 
                                 {
                                 'username': self.user.username,
                                 'text': 'new_post_with_img',
-                                'image': img,
+                                'image': mock_file,
                                 'group': self.group.id
                                 },
                             follow=True
@@ -230,10 +241,7 @@ class Cache(TestCase):
         self.assertNotContains(second_enter, 'new_post_test_cache')
         cache.clear()
         third_enter = self.login_user.get(reverse("index"))
-        self.assertEqual(third_enter.context['paginator'].count, 1)
-        post_on_page = third_enter.context['page'][0]
-        self.assertEqual(post_on_page.text, 'new_post_test_cache')
-        self.assertEqual(post_on_page.author, self.user)
+        self.assertContains(third_enter, 'new_post_test_cache')
 
 
 class Followings(TestCase):
@@ -249,37 +257,25 @@ class Followings(TestCase):
                         )
     
 
-    def test_can_follow_and_unfollow(self):
-        response_before_follow = self.login_user.get(reverse('profile', 
-                                 kwargs={
-                                     'username' : self.author.username
-                                    }
-                                )
-                            )
-        self.assertEqual(response_before_follow.context['follower'], 0)
+    def test_user_can_follow(self):
         self.login_user.post(reverse('profile_follow', 
                              kwargs={'username': self.author.username}
                             )
                         )
-        response_after_follow = self.login_user.get(reverse('profile', 
-                                kwargs={
-                                    'username' : self.author.username
-                                    }
-                                )
-                            )
-        self.assertEqual(response_after_follow.context['follower'], 1)
+        relation = Follow.objects.get(user=self.user)
+        all_relations = Follow.objects.count()
+        self.assertEqual(all_relations, 1)
+        self.assertEqual(relation.user, self.user)
+        self.assertEqual(relation.author, self.author)
 
-        self.login_user.post(reverse('profile_unfollow', 
-                             kwargs={'username': self.author.username}
-                            )
+    def test_user_can_unfollow(self):
+        Follow.objects.create(user=self.user, author=self.author)
+        self.login_user.post(reverse('profile_unfollow',  
+                             kwargs={'username': self.author.username} 
+                            ) 
                         )
-        response_after_unfollow = self.login_user.get(reverse('profile', 
-                                kwargs={
-                                    'username' : self.author.username
-                                    }
-                                )
-                            )
-        self.assertEqual(response_after_unfollow.context['follower'], 0)
+        all_relations = Follow.objects.count()
+        self.assertEqual(all_relations, 0)
     
 
     def test_follower_posts(self):
@@ -291,12 +287,15 @@ class Followings(TestCase):
         response_with_follow = self.login_user.post(reverse('follow_index'))
         self.assertIn(post, response_with_follow.context['posts_list'])
         
+    def test_unfollower_posts(self):
+        Follow.objects.create(user=self.user, author=self.author)
+        post = Post.objects.create(text='post_by_following_author', author=self.author)
         self.login_user.post(reverse('profile_unfollow', 
                              kwargs={'username': self.author.username}
                             )
                         )
         response_without_follow = self.login_user.post(reverse('follow_index'))
-        self.assertNotIn(post, response_without_follow.context['posts_list'])
+        self.assertEqual(response_without_follow.context['paginator'].count, 0)
     
 
 class Commentators(TestCase):
@@ -307,7 +306,20 @@ class Commentators(TestCase):
                             )
     
     
-    def test_only_autorized_user_can_comment(self):
+    def test_anonymous_can_not_comment(self):
+        post = Post.objects.create(text='test post', author=self.author)
+        try_comment = self.not_login_user.post(reverse('add_comment', 
+                                    kwargs={
+                                        'username': self.author, 
+                                        'post_id': post.id
+                                        }
+                                    )
+                                )
+        all_comments = Comment.objects.count()
+        self.assertEqual(all_comments, 0)
+    
+
+    def test_anonymous_redirect_after_trying_comment(self):
         post = Post.objects.create(text='test post', author=self.author)
         try_comment = self.not_login_user.post(reverse('add_comment', 
                                     kwargs={
@@ -323,25 +335,3 @@ class Commentators(TestCase):
                             f'{post.id}/comment'
                             )
                         )
-        all_comments = Comment.objects.all().count()
-        self.assertEqual(all_comments, 0)
-
-    
-
-
-    
-
-        
-
-        
-
-
-        
-
-                        
-
-
-
-
-        
-

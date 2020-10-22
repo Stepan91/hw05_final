@@ -23,7 +23,7 @@ def index(request):
 
 def group_posts(request, slug):
     group = get_object_or_404(Group, slug=slug)
-    post_list = group.posts.filter(group=group)
+    post_list = group.posts.all()
     paginator = Paginator(post_list, 10)
     page_number = request.GET.get('page')
     page = paginator.get_page(page_number)
@@ -47,15 +47,17 @@ def new_post(request):
 
 def profile(request, username):
     author = get_object_or_404(User, username=username)
-    post_list = author.posts.filter(author=author)
+    post_list = author.posts.all()
     paginator = Paginator(post_list, 10)
     page_number = request.GET.get('page')
     page = paginator.get_page(page_number)
     follower = Follow.objects.filter(author=author).count()
     following = None
-    if not request.user.is_anonymous or request.user.is_authenticated:
+    if request.user.is_authenticated:
         following = Follow.objects.filter(
             user = request.user,
+    # exists() не стал использовать, чтобы посчитать кол-во
+    # подписчиков через переменную following.
             author = author)
     return render(
         request, 
@@ -64,22 +66,20 @@ def profile(request, username):
             'paginator': paginator, 
             'author': author,
             'following': following,
-            'follower': follower
             }
         )
 
 
 @login_required
 def add_comment(request, username, post_id):
-    user = get_object_or_404(User, username=username)
-    post = get_object_or_404(Post, author=user, id=post_id)
+    post = get_object_or_404(Post, author__username=username, id=post_id)
     form = CommentForm(request.POST or None)
     if form.is_valid():
         comment = form.save(commit=False)
         comment.author = request.user
         comment.post = post
         comment.save()
-        return redirect('post', username=request.user.username, post_id=post_id)
+        return redirect('post', username=username, post_id=post_id)
     return render(request, 'comments.html', {'form': form, 'post': post})
 
 
@@ -123,8 +123,7 @@ def server_error(request):
 
 @login_required
 def follow_index(request):
-    followings = Follow.objects.filter(user=request.user)
-    post_list = Post.objects.filter(author__following__in=followings)
+    post_list = Post.objects.filter(author__following__user=request.user)
     paginator = Paginator(post_list, 10)
     page_number = request.GET.get('page')
     page = paginator.get_page(page_number)
@@ -147,6 +146,7 @@ def profile_follow(request, username):
 @login_required
 def profile_unfollow(request, username):
     author = get_object_or_404(User, username=username)
-    if request.user != author:
-        Follow.objects.filter(user=request.user, author=author).delete()
+    object = Follow.objects.filter(user=request.user, author=author)
+    if object.exists():
+        object.delete()
     return redirect("profile", username=username)
