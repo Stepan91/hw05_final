@@ -20,7 +20,6 @@ def index(request):
         {'page': page, 'paginator': paginator}
     )
 
-
 def group_posts(request, slug):
     group = get_object_or_404(Group, slug=slug)
     post_list = group.posts.all()
@@ -33,7 +32,6 @@ def group_posts(request, slug):
         {'page': page, 'paginator': paginator, 'group': group}
     )
 
-
 @login_required
 def new_post(request):
     form = PostForm(request.POST or None, files=request.FILES or None)
@@ -44,7 +42,6 @@ def new_post(request):
         return redirect('index')
     return render(request, 'new.html', {'form': form})
     
-
 def profile(request, username):
     author = get_object_or_404(User, username=username)
     post_list = author.posts.all()
@@ -66,7 +63,6 @@ def profile(request, username):
             }
         )
 
-
 @login_required
 def add_comment(request, username, post_id):
     post = get_object_or_404(Post, author__username=username, id=post_id)
@@ -79,7 +75,6 @@ def add_comment(request, username, post_id):
         return redirect('post', username=username, post_id=post_id)
     return render(request, 'comments.html', {'form': form, 'post': post})
 
-
 def post_view(request, username, post_id):
     post = get_object_or_404(Post, author__username=username, id=post_id)
     comment_form = CommentForm()
@@ -88,7 +83,6 @@ def post_view(request, username, post_id):
         'post.html',
         {'post': post, 'author': post.author, 'comment_form': comment_form}
         )
-
 
 def post_edit(request, username, post_id):
     post = get_object_or_404(Post, author__username=username, id=post_id)
@@ -117,7 +111,6 @@ def page_not_found(request, exception):
 def server_error(request):
     return render(request, "misc/500.html", status=500)
 
-
 @login_required
 def follow_index(request):
     post_list = Post.objects.filter(author__following__user=request.user)
@@ -131,14 +124,12 @@ def follow_index(request):
         }
     )
 
-
 @login_required
 def profile_follow(request, username):
     author = get_object_or_404(User, username=username)
     if request.user != author:
         Follow.objects.get_or_create(user=request.user, author=author)
     return redirect("profile", username=username)
-
 
 @login_required
 def profile_unfollow(request, username):
