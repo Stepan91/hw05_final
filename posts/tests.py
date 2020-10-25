@@ -24,7 +24,6 @@ class ScriptsTest(TestCase):
         self.login_user.force_login(self.user)
         cache.clear()
  
-
     def check(self, url, text, author, group):
         response = self.login_user.get(url)
         paginator = response.context.get('paginator')
@@ -37,7 +36,6 @@ class ScriptsTest(TestCase):
         self.assertEqual(post_on_page.author, author)
         self.assertEqual(str(post_on_page.group), str(group))
  
- 
     def test_profile(self):
         url=reverse(
                     'profile', 
@@ -47,7 +45,6 @@ class ScriptsTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsInstance(response.context['author'], User)
         self.assertEqual(response.context['author'].username, self.user.username)
- 
  
     def test_post_autorized(self):
         post = self.login_user.post( 
@@ -62,7 +59,6 @@ class ScriptsTest(TestCase):
         self.assertEqual(object.author, self.user)
         self.assertEqual(object.group, self.group)
  
- 
     def test_post_NotAutorized(self):
         try_post = self.not_login_user.post(reverse('new_post'))
         self.assertEqual(try_post.status_code, 302)
@@ -74,7 +70,6 @@ class ScriptsTest(TestCase):
         all_objects = Post.objects.count()
         self.assertEqual(all_objects, 0)
  
- 
     def test_post_on_pages(self):
         post = Post.objects.create(text='GOGOGOGOGO', author=self.user, group=self.group)
         urls = [
@@ -85,7 +80,6 @@ class ScriptsTest(TestCase):
 
         for test in urls:
             self.check(test, post.text, self.user, self.group)
- 
  
     def test_edit_post(self):
         post = Post.objects.create(text='GOGOGOGOGO', author=self.user, group=self.group)
@@ -185,7 +179,6 @@ class Imagines(TestCase):
             response = self.login_user.get(url)
             self.assertContains(response, '<img')
   
- 
     def test_wrong_format(self):
         mock_file = Mock()
         mock_file.name = 'my_filename.doc'
@@ -221,7 +214,6 @@ class Cache(TestCase):
         self.login_user = Client()
         self.login_user.force_login(self.user)
     
-
     def test_cache(self):
         first_enter = self.login_user.get(reverse('index'))
         Post.objects.create(author=self.user, text='new_post_test_cache')
@@ -245,7 +237,6 @@ class Followings(TestCase):
                         )
         self.group = Group.objects.create(title='test_follow_group', slug='test_group')
     
-
     def test_user_can_follow(self):
         self.login_user.post(reverse('profile_follow', 
                              kwargs={'username': self.author.username}
@@ -266,7 +257,6 @@ class Followings(TestCase):
         all_relations = Follow.objects.count()
         self.assertEqual(all_relations, 0)
     
-
     def test_follower_posts(self):
         self.login_user.post(reverse('profile_follow', 
                              kwargs={'username': self.author.username}
@@ -285,7 +275,6 @@ class Followings(TestCase):
         self.assertEqual(post_on_page.author, post.author)
         self.assertEqual(str(post_on_page.group), str(post.group))
 
-
     def test_unfollower_posts(self):
         post = Post.objects.create(text='post_by_following_author', author=self.author)
         response_without_follow = self.login_user.post(reverse('follow_index'))
@@ -303,7 +292,6 @@ class Commentators(TestCase):
                             )
         self.login_user = Client()
         self.login_user.force_login(self.user)
-    
     
     def test_anonymous_can_not_comment(self):
         post = Post.objects.create(text='test post', author=self.author)
@@ -324,7 +312,6 @@ class Commentators(TestCase):
                             )
                         )
     
-
     def test_creating_comments(self):
         post = Post.objects.create(text='test post', author=self.author)
         comment = self.login_user.post(reverse('add_comment', 
