@@ -6,12 +6,10 @@ from . import views
 from django.urls import reverse
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
-from PIL import Image
 from unittest.mock import Mock
  
  
 class ScriptsTest(TestCase):
-    login_user = Client()
     def setUp(self):
         self.user = User.objects.create_user(
                         first_name = 'sarah',
@@ -152,15 +150,17 @@ class Imagines(TestCase):
  
 
     def test_img(self):
-        img = Image.new('RGB', (60, 30), color = (73, 109, 137))
-        img.save('pil_color.jpg')
-        SimpleUploadedFile(name='pil_color.jpg', content=b'file_content', content_type='image/jpg')
-        with open('pil_color.jpg', 'rb') as _img:
-           post = self.login_user.post(reverse('new_post'),
+        small_gif = (
+                b'\x47\x49\x46\x38\x39\x61\x01\x00\x01\x00\x00\x00\x00\x21\xf9\x04'
+                b'\x01\x0a\x00\x01\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02'
+                b'\x02\x4c\x01\x00\x3b'
+                )
+        uploaded = SimpleUploadedFile('small.gif', small_gif, content_type='image/gif')
+        post = self.login_user.post(reverse('new_post'),
                                 {
                                 'username': self.user.username,
                                 'text': 'new_post_with_img',
-                                'image': _img,
+                                'image': uploaded,
                                 'group': self.group.id
                                 },
                             follow=True
@@ -277,8 +277,13 @@ class Followings(TestCase):
                         author=self.author,
                         group=self.group
                         )
-        ScriptsTest().login_user = ScriptsTest().login_user.force_login(self.user)
-        ScriptsTest().check(reverse('follow_index'), post.text, post.author, post.group)
+        response_with_follow = self.login_user.post(reverse('follow_index')) 
+        self.assertIn(post, response_with_follow.context['posts_list'])
+        self.assertEqual(response_with_follow.context['paginator'].count, 1)
+        post_on_page = response_with_follow.context['page'][0]
+        self.assertEqual(post_on_page.text, post.text)
+        self.assertEqual(post_on_page.author, post.author)
+        self.assertEqual(str(post_on_page.group), str(post.group))
 
 
     def test_unfollower_posts(self):
@@ -331,7 +336,7 @@ class Commentators(TestCase):
                                     {'text': 'test_text'},
                                     follow=True
                                 )
-        new_comment = Comment.objects.get(pk=1)
+        new_comment = Comment.objects.order_by('author').first()
         all_comments = Comment.objects.count()
         self.assertEqual(all_comments, 1)
         self.assertEqual(new_comment.text, 'test_text')
